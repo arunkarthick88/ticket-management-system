@@ -1,4 +1,4 @@
-# 🎫 IT Helpdesk - Ticket Management System
+# IT Helpdesk - Ticket Management System
 
 A full-stack, enterprise-grade Ticket Management System built with **FastAPI** (Backend) and **React** (Frontend). This application features a complete Role-Based Access Control (RBAC) system, allowing standard users to submit issues, support agents to manage their assigned workflow, and administrators to oversee the entire operation.
 
@@ -15,7 +15,7 @@ A full-stack, enterprise-grade Ticket Management System built with **FastAPI** (
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 * Python 3.8+
@@ -51,7 +51,7 @@ npm run dev
 
 ---
 
-## 🧠 Implementation Logic: Ticket Updates Module
+## Implementation Logic: Ticket Updates Module
 
 The **Ticket Updates** module is a core feature that allows Support Staff and Admins to communicate troubleshooting steps and progress on a specific ticket. It spans across the database, backend API, and frontend UI.
 
