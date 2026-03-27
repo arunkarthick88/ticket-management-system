@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import models
 from database import engine
-from routers import auth_router, ticket_router, admin_router, support_router
+from routers import auth_router, ticket_router, admin_router, support_router, notification_router
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -23,6 +23,9 @@ app.include_router(ticket_router.router)
 # Phase 2 Routers
 app.include_router(admin_router.router)
 app.include_router(support_router.router)
+
+# Phase 3 Routers
+app.include_router(notification_router.router)
 
 @app.get("/")
 def root():

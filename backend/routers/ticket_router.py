@@ -37,7 +37,7 @@ def get_ticket_by_id(ticket_id: int, db: Session = Depends(get_db), current_user
     return ticket
 
 
-# --- PHASE 2: ADMIN & SUPPORT ACTIONS ---
+# --- PHASE 2 & 3: ADMIN & SUPPORT ACTIONS ---
 
 @router.patch("/{ticket_id}/assign", response_model=schemas.TicketResponse)
 def assign_ticket(ticket_id: int, assign_data: schemas.TicketAssign, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -63,6 +63,15 @@ def update_ticket_status(ticket_id: int, status_data: schemas.TicketStatusUpdate
         raise HTTPException(status_code=404, detail="Ticket not found")
         
     ticket.status = status_data.status
+    
+    # PHASE 3: Generate Notification for the End User
+    new_notification = models.Notification(
+        user_id=ticket.created_by,
+        ticket_id=ticket.id,
+        message=f"Your ticket '{ticket.title}' status was updated to: {ticket.status}"
+    )
+    db.add(new_notification)
+    
     db.commit()
     db.refresh(ticket)
     return ticket
@@ -77,6 +86,15 @@ def update_ticket_priority(ticket_id: int, priority_data: schemas.TicketPriority
         raise HTTPException(status_code=404, detail="Ticket not found")
         
     ticket.priority = priority_data.priority
+    
+    # PHASE 3: Generate Notification for the End User
+    new_notification = models.Notification(
+        user_id=ticket.created_by,
+        ticket_id=ticket.id,
+        message=f"Your ticket '{ticket.title}' priority was updated to: {ticket.priority}"
+    )
+    db.add(new_notification)
+    
     db.commit()
     db.refresh(ticket)
     return ticket

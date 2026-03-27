@@ -51,3 +51,19 @@ class TicketUpdate(Base):
     # Relationships linking the update to the specific ticket and the support user who made it
     ticket = relationship("Ticket")
     support_user = relationship("User", foreign_keys=[support_user_id])
+
+
+# --- PHASE 3: NOTIFICATION MODEL ---
+class Notification(Base):
+    __tablename__ = "notifications"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    ticket_id = Column(Integer, ForeignKey("tickets.id"))
+    message = Column(Text)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships linking the notification to the user and the specific ticket
+    user = relationship("User", foreign_keys=[user_id])
+    ticket = relationship("Ticket", foreign_keys=[ticket_id])

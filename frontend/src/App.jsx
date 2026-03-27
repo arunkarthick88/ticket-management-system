@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import AdminDashboard from './AdminDashboard';
 import SupportDashboard from './SupportDashboard';
+import Notifications from './Notifications';
 import Login from './Login';
 import Register from './Register';
 import Layout from './Layout';
@@ -33,6 +34,9 @@ function App() {
             
             {/* NEW SUPPORT ROUTE */}
             <Route path="support" element={<SupportDashboard />} />
+
+            {/* NEW NOTIFICATION ROUTE */}
+            <Route path="notifications" element={<Notifications />} />
         </Route>
       </Routes>
     </Router>
