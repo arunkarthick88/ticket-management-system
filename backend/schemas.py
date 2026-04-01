@@ -87,3 +87,18 @@ class NotificationResponse(BaseModel):
 
 class UnreadCountResponse(BaseModel):
     unread_count: int
+
+
+# --- PHASE 4: AUDIT TRAIL & ENHANCEMENT SCHEMAS ---
+
+class TicketActivityResponse(BaseModel):
+    id: int
+    ticket_id: int
+    user_id: int
+    action: str
+    created_at: datetime
+    class Config:
+        from_attributes = True
+
+class TicketReopen(BaseModel):
+    reason: str

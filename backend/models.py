@@ -24,14 +24,14 @@ class Ticket(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(200))
     description = Column(Text)
-    category = Column(String(100))
-    status = Column(String(50), default="Open") # Open, In Progress, Resolved, Closed
-    priority = Column(String(50), default="Medium") # Low, Medium, High, Urgent
+    category = Column(String(100), index=True) # Optimized
+    status = Column(String(50), default="Open", index=True) # Optimized
+    priority = Column(String(50), default="Medium", index=True) # Optimized
     
-    created_by = Column(Integer, ForeignKey("users.id"))
-    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("users.id"), index=True) # Optimized
+    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=True, index=True) # Optimized
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True) # Optimized
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationship linking back to the user who created it
@@ -42,7 +42,7 @@ class TicketUpdate(Base):
     __tablename__ = "ticket_updates"
     
     id = Column(Integer, primary_key=True, index=True)
-    ticket_id = Column(Integer, ForeignKey("tickets.id"))
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), index=True) # Optimized
     support_user_id = Column(Integer, ForeignKey("users.id"))
     message = Column(Text)
     update_type = Column(String(50), default="Feedback")
@@ -58,12 +58,25 @@ class Notification(Base):
     __tablename__ = "notifications"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True) # Optimized
     ticket_id = Column(Integer, ForeignKey("tickets.id"))
     message = Column(Text)
-    is_read = Column(Boolean, default=False)
+    is_read = Column(Boolean, default=False, index=True) # Optimized
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships linking the notification to the user and the specific ticket
     user = relationship("User", foreign_keys=[user_id])
     ticket = relationship("Ticket", foreign_keys=[ticket_id])
+
+# --- PHASE 4: AUDIT TRAIL MODEL ---
+class TicketActivity(Base):
+    __tablename__ = "ticket_activities"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id")) # User who performed the action
+    action = Column(String(255)) # Example: "Ticket created by User"
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    ticket = relationship("Ticket")
+    user = relationship("User", foreign_keys=[user_id])
