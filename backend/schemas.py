@@ -102,3 +102,15 @@ class TicketActivityResponse(BaseModel):
 
 class TicketReopen(BaseModel):
     reason: str
+
+# --- PHASE 5: ATTACHMENT SCHEMAS ---
+class TicketAttachmentResponse(BaseModel):
+    id: int
+    ticket_id: int
+    uploader_id: int
+    file_name: str
+    content_type: str
+    uploaded_at: datetime
+    
+    class Config:
+        from_attributes = True

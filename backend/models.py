@@ -80,3 +80,17 @@ class TicketActivity(Base):
 
     ticket = relationship("Ticket")
     user = relationship("User", foreign_keys=[user_id])
+
+class TicketAttachment(Base):
+    __tablename__ = "ticket_attachments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), index=True)
+    uploader_id = Column(Integer, ForeignKey("users.id"))
+    file_name = Column(String(255))
+    file_path = Column(String(500)) # Local path where the file is stored
+    content_type = Column(String(100))
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+
+    ticket = relationship("Ticket")
+    uploader = relationship("User", foreign_keys=[uploader_id])

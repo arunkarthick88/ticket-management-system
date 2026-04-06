@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Tag, AlertTriangle, MessageSquare, Send, Activity, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, AlertTriangle, MessageSquare, Send, Activity, RefreshCw, Paperclip, Download } from 'lucide-react';
 import api from './api';
 
 export default function TicketDetails() {
@@ -8,13 +8,18 @@ export default function TicketDetails() {
     const navigate = useNavigate();
     const [ticket, setTicket] = useState(null);
     const [updates, setUpdates] = useState([]);
-    const [activities, setActivities] = useState([]); // Phase 4: Audit Trail State
+    const [activities, setActivities] = useState([]); 
     const [newUpdate, setNewUpdate] = useState('');
     const [currentUser, setCurrentUser] = useState(null);
     
     // Phase 4: Reopen Ticket States
     const [isReopening, setIsReopening] = useState(false);
     const [reopenReason, setReopenReason] = useState('');
+
+    // Phase 5: File Upload States
+    const [attachments, setAttachments] = useState([]);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     useEffect(() => {
         api.get('/auth/me').then(res => setCurrentUser(res.data));
@@ -31,11 +36,16 @@ export default function TicketDetails() {
                 setUpdates(updatesRes.data);
             } catch (err) { console.log("No updates access"); }
             
-            // PHASE 4: Fetch Audit Trail
             try {
                 const activityRes = await api.get(`/tickets/${id}/activity`);
                 setActivities(activityRes.data);
             } catch (err) { console.log("No activity access"); }
+
+            // PHASE 5: Fetch Attachments
+            try {
+                const attachRes = await api.get(`/tickets/${id}/attachments`);
+                setAttachments(attachRes.data);
+            } catch (err) { console.log("No attachments access"); }
 
         } catch (error) {
             console.error("Error fetching ticket:", error);
@@ -52,23 +62,77 @@ export default function TicketDetails() {
         } catch (error) { alert("Failed to add update."); }
     };
 
-    // PHASE 4: Reopen Ticket Logic
     const handleReopen = async (e) => {
         e.preventDefault();
         try {
             await api.post(`/tickets/${id}/reopen`, { reason: reopenReason });
             setIsReopening(false);
             setReopenReason('');
-            fetchData(); // Refresh everything to show it's Open again!
+            fetchData(); 
         } catch (error) {
             alert(error.response?.data?.detail || "Failed to reopen ticket.");
+        }
+    };
+
+    // PHASE 5: File Upload Handlers
+    const handleFileChange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            // Validate size (5MB) on frontend
+            if (file.size > 5 * 1024 * 1024) {
+                alert("File is too large. Maximum size is 5MB.");
+                e.target.value = ""; // Reset input
+                return;
+            }
+            setSelectedFile(file);
+        }
+    };
+
+    const handleFileUpload = async (e) => {
+        e.preventDefault();
+        if (!selectedFile) return;
+
+        setIsUploading(true);
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+
+        try {
+            await api.post(`/tickets/${id}/attachments`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            
+            setSelectedFile(null); 
+            document.getElementById('file-upload-input').value = ""; 
+            fetchData(); // Refresh the list
+        } catch (error) {
+            alert(error.response?.data?.detail || "Failed to upload file");
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    // PHASE 5: Secure File Download Handler
+    const handleDownload = async (attachmentId, fileName) => {
+        try {
+            const response = await api.get(`/tickets/attachments/${attachmentId}/download`, {
+                responseType: 'blob' // Important for files!
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', fileName);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (error) {
+            alert("Failed to download file.");
         }
     };
 
     if (!ticket || !currentUser) return <div className="text-center p-8">Loading ticket...</div>;
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
+        <div className="max-w-4xl mx-auto space-y-6 mb-12">
             <button onClick={() => navigate(-1)} className="inline-flex items-center space-x-2 text-purple-600 hover:text-purple-800 font-medium transition">
                 <ArrowLeft className="w-5 h-5" />
                 <span>Go Back</span>
@@ -98,6 +162,58 @@ export default function TicketDetails() {
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Original Description</h3>
                     <div className="bg-gray-50 p-6 rounded-xl text-gray-700 leading-relaxed whitespace-pre-wrap border border-gray-100">
                         {ticket.description}
+                    </div>
+
+                    {/* PHASE 5: FILE UPLOADS SECTION */}
+                    <div className="mt-8">
+                        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center">
+                            <Paperclip className="w-4 h-4 mr-2" /> Attachments
+                        </h3>
+                        
+                        {/* Upload Form */}
+                        <form onSubmit={handleFileUpload} className="flex flex-col sm:flex-row items-center gap-4 mb-4">
+                            <input 
+                                id="file-upload-input"
+                                type="file" 
+                                accept=".jpg,.jpeg,.png,.pdf"
+                                onChange={handleFileChange}
+                                className="w-full sm:w-auto text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer"
+                            />
+                            <button 
+                                type="submit" 
+                                disabled={!selectedFile || isUploading}
+                                className="w-full sm:w-auto bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-full shadow transition text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isUploading ? "Uploading..." : "Upload File"}
+                            </button>
+                        </form>
+
+                        {/* Attachments List */}
+                        {attachments.length === 0 ? (
+                            <p className="text-gray-500 text-sm italic">No files attached to this ticket.</p>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+                                {attachments.map((file) => (
+                                    <div key={file.id} className="flex items-center justify-between bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold uppercase shrink-0">
+                                                {file.content_type.split('/')[1] === 'pdf' ? 'PDF' : 'IMG'}
+                                            </span>
+                                            <span className="text-sm font-medium text-gray-700 truncate" title={file.file_name}>
+                                                {file.file_name}
+                                            </span>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleDownload(file.id, file.file_name)}
+                                            className="text-purple-600 hover:text-purple-800 p-1 bg-purple-50 rounded shrink-0"
+                                            title="Download"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     {/* PHASE 4: REOPEN TICKET UI */}
