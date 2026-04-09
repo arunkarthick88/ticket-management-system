@@ -112,12 +112,12 @@ def export_tickets_csv(db: Session = Depends(get_db), current_user: models.User 
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Write Headers
-    writer.writerow(["Ticket ID", "Title", "Category", "Status", "Priority", "Created At", "Assigned To ID"])
+    # PHASE 6: Added SLA tracking columns to the CSV Export!
+    writer.writerow(["Ticket ID", "Title", "Category", "Status", "Priority", "Created At", "Assigned To ID", "Due At", "SLA Status", "Resolved At"])
     
     # Write Data Rows
     for t in tickets:
-        writer.writerow([t.id, t.title, t.category, t.status, t.priority, t.created_at, t.assigned_to])
+        writer.writerow([t.id, t.title, t.category, t.status, t.priority, t.created_at, t.assigned_to, t.due_at, t.sla_status, t.resolved_at])
         
     output.seek(0)
     
@@ -127,3 +127,28 @@ def export_tickets_csv(db: Session = Depends(get_db), current_user: models.User 
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=it_helpdesk_tickets_export.csv"}
     )
+
+# --- PHASE 6: SLA DASHBOARD SUMMARY ---
+
+@router.get("/sla-summary", response_model=schemas.SLASummaryResponse)
+def get_sla_summary(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    breached_count = db.query(models.Ticket).filter(models.Ticket.sla_status == "breached").count()
+    at_risk_count = db.query(models.Ticket).filter(models.Ticket.sla_status == "at_risk").count()
+
+    # Calculate SLA Compliance Percentage
+    # Formula: (Tickets resolved on time / Total resolved tickets) * 100
+    total_resolved = db.query(models.Ticket).filter(models.Ticket.status.in_(["Resolved", "Closed"])).count()
+    completed_on_time = db.query(models.Ticket).filter(models.Ticket.sla_status == "completed").count()
+
+    compliance_percentage = 0.0
+    if total_resolved > 0:
+        compliance_percentage = round((completed_on_time / total_resolved) * 100, 2)
+
+    return {
+        "breached_count": breached_count,
+        "at_risk_count": at_risk_count,
+        "compliance_percentage": compliance_percentage
+    }

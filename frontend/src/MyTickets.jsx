@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Clock, AlertCircle, Search } from 'lucide-react';
+import { Ticket, Plus, Clock, AlertOctagon, CheckCircle, AlertTriangle } from 'lucide-react';
 import api from './api';
 
 export default function MyTickets() {
     const [tickets, setTickets] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         fetchTickets();
@@ -15,65 +16,115 @@ export default function MyTickets() {
             const response = await api.get('/tickets/my');
             setTickets(response.data);
         } catch (error) {
-            console.error("Error fetching tickets:", error);
+            console.error("Failed to fetch tickets", error);
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const getStatusColor = (status) => {
+    // --- PHASE 6: Helper function for SLA UI styling ---
+    const getSlaBadge = (status) => {
         switch(status) {
-            case 'Open': return 'bg-blue-100 text-blue-800 border-blue-200';
-            case 'In Progress': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-            case 'Resolved': return 'bg-green-100 text-green-800 border-green-200';
-            case 'Closed': return 'bg-gray-100 text-gray-800 border-gray-200';
-            default: return 'bg-gray-100 text-gray-800 border-gray-200';
+            case 'on_track': return <span className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold flex items-center whitespace-nowrap"><CheckCircle className="w-3 h-3 mr-1" /> On Track</span>;
+            case 'at_risk': return <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-bold flex items-center whitespace-nowrap"><Clock className="w-3 h-3 mr-1" /> At Risk</span>;
+            case 'breached': return <span className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold flex items-center whitespace-nowrap"><AlertOctagon className="w-3 h-3 mr-1" /> Breached</span>;
+            case 'completed': return <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold flex items-center whitespace-nowrap"><CheckCircle className="w-3 h-3 mr-1" /> SLA Met</span>;
+            default: return <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-bold">Unknown</span>;
         }
     };
+
+    if (isLoading) return <div className="text-center p-8 text-gray-500">Loading your tickets...</div>;
 
     return (
-        <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden">
-            <div className="p-6 border-b border-purple-50 bg-white flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-800">My Tickets</h2>
-                <span className="bg-purple-100 text-purple-800 text-sm font-bold px-4 py-1.5 rounded-full">
-                    {tickets.length} Total
-                </span>
+        <div className="max-w-6xl mx-auto space-y-6 mt-4">
+            {/* Header Section */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900 flex items-center">
+                        <Ticket className="w-6 h-6 mr-2 text-purple-600" />
+                        My Tickets
+                    </h1>
+                    <p className="text-gray-500 text-sm mt-1">View and track the status of your support requests.</p>
+                </div>
+                <Link 
+                    to="/dashboard/create" 
+                    className="bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl font-bold transition shadow-sm flex items-center space-x-2"
+                >
+                    <Plus className="w-5 h-5" />
+                    <span>Submit New Ticket</span>
+                </Link>
             </div>
-            
-            <div className="divide-y divide-gray-50">
-                {tickets.length === 0 ? (
-                    <div className="p-12 text-center flex flex-col items-center">
-                        <Search className="w-12 h-12 text-gray-300 mb-4" />
-                        <p className="text-gray-500 text-lg">You haven't submitted any tickets yet.</p>
-                        <Link to="/dashboard/create" className="mt-4 text-purple-600 font-bold hover:underline">Submit one now</Link>
-                    </div>
-                ) : (
-                    tickets.map((ticket) => (
-                        <div key={ticket.id} className="p-6 hover:bg-purple-50/50 transition flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="flex-1">
-                                <div className="flex items-center space-x-3 mb-2">
-                                    <h3 className="text-lg font-bold text-gray-900">{ticket.title}</h3>
-                                    <span className={`px-3 py-1 rounded-full text-xs font-bold border ${getStatusColor(ticket.status)}`}>
-                                        {ticket.status}
-                                    </span>
-                                </div>
-                                <div className="flex items-center space-x-6 text-sm text-gray-500">
-                                    <span className="flex items-center">
-                                        <AlertCircle className="w-4 h-4 mr-1.5 text-gray-400" />
-                                        {ticket.priority} Priority
-                                    </span>
-                                    <span className="flex items-center">
-                                        <Clock className="w-4 h-4 mr-1.5 text-gray-400" />
-                                        {new Date(ticket.created_at).toLocaleDateString()}
-                                    </span>
-                                </div>
-                            </div>
-                            
-                            <Link to={`/dashboard/ticket/${ticket.id}`} 
-                                  className="shrink-0 bg-purple-100 text-purple-700 font-bold px-6 py-2.5 rounded-lg hover:bg-purple-600 hover:text-white transition-colors duration-200 text-center">
-                                View Details
-                            </Link>
-                        </div>
-                    ))
-                )}
+
+            {/* Tickets Table */}
+            <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead>
+                            <tr className="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider border-b">
+                                <th className="p-4 font-bold">Ticket Details</th>
+                                <th className="p-4 font-bold">Category</th>
+                                <th className="p-4 font-bold">Status</th>
+                                <th className="p-4 font-bold">SLA Health</th>
+                                <th className="p-4 font-bold text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                            {tickets.length === 0 ? (
+                                <tr>
+                                    <td colSpan="5" className="p-8 text-center text-gray-500">
+                                        You haven't submitted any tickets yet.
+                                    </td>
+                                </tr>
+                            ) : (
+                                tickets.map((ticket) => (
+                                    <tr key={ticket.id} className="hover:bg-purple-50/50 transition">
+                                        <td className="p-4">
+                                            <p className="font-bold text-gray-900">{ticket.title}</p>
+                                            <div className="flex items-center text-xs text-gray-500 mt-1 space-x-3">
+                                                <span>#{ticket.id}</span>
+                                                <span>•</span>
+                                                <span>Created: {new Date(ticket.created_at).toLocaleDateString()}</span>
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <span className="text-sm text-gray-700 bg-gray-100 px-3 py-1 rounded-lg">
+                                                {ticket.category}
+                                            </span>
+                                        </td>
+                                        <td className="p-4">
+                                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+                                                ticket.status === 'Closed' ? 'bg-gray-200 text-gray-700' : 
+                                                ticket.status === 'Resolved' ? 'bg-green-100 text-green-700' :
+                                                'bg-purple-100 text-purple-700'
+                                            }`}>
+                                                {ticket.status}
+                                            </span>
+                                        </td>
+                                        <td className="p-4">
+                                            {/* PHASE 6: Render the SLA Badge here! */}
+                                            <div className="flex flex-col items-start gap-1">
+                                                {getSlaBadge(ticket.sla_status)}
+                                                {ticket.due_at && ticket.status !== 'Closed' && ticket.status !== 'Resolved' && (
+                                                    <span className="text-[10px] text-gray-400 font-medium ml-1">
+                                                        Due: {new Date(ticket.due_at).toLocaleDateString()}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <Link 
+                                                to={`/dashboard/ticket/${ticket.id}`} 
+                                                className="text-purple-600 hover:text-purple-900 font-medium text-sm bg-purple-50 hover:bg-purple-100 px-4 py-2 rounded-lg transition"
+                                            >
+                                                View
+                                            </Link>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     );

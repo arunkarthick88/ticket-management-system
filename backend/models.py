@@ -34,6 +34,13 @@ class Ticket(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True) # Optimized
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # --- NEW SLA ENGINE FIELDS ---
+    due_at = Column(DateTime, nullable=True)
+    first_response_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+    sla_status = Column(String(50), default="on_track") # on_track, at_risk, breached, completed
+    breached_at = Column(DateTime, nullable=True)
+
     # Relationship linking back to the user who created it
     creator = relationship("User", foreign_keys=[created_by], back_populates="tickets_created")
 
@@ -81,6 +88,7 @@ class TicketActivity(Base):
     ticket = relationship("Ticket")
     user = relationship("User", foreign_keys=[user_id])
 
+# --- PHASE 5: FILE ATTACHMENT MODEL ---
 class TicketAttachment(Base):
     __tablename__ = "ticket_attachments"
     

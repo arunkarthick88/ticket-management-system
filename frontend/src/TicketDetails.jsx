@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Tag, AlertTriangle, MessageSquare, Send, Activity, RefreshCw, Paperclip, Download } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, AlertTriangle, MessageSquare, Send, Activity, RefreshCw, Paperclip, Download, Clock, AlertOctagon, CheckCircle } from 'lucide-react';
 import api from './api';
 
 export default function TicketDetails() {
@@ -12,11 +12,9 @@ export default function TicketDetails() {
     const [newUpdate, setNewUpdate] = useState('');
     const [currentUser, setCurrentUser] = useState(null);
     
-    // Phase 4: Reopen Ticket States
     const [isReopening, setIsReopening] = useState(false);
     const [reopenReason, setReopenReason] = useState('');
 
-    // Phase 5: File Upload States
     const [attachments, setAttachments] = useState([]);
     const [selectedFile, setSelectedFile] = useState(null);
     const [isUploading, setIsUploading] = useState(false);
@@ -41,7 +39,6 @@ export default function TicketDetails() {
                 setActivities(activityRes.data);
             } catch (err) { console.log("No activity access"); }
 
-            // PHASE 5: Fetch Attachments
             try {
                 const attachRes = await api.get(`/tickets/${id}/attachments`);
                 setAttachments(attachRes.data);
@@ -74,14 +71,12 @@ export default function TicketDetails() {
         }
     };
 
-    // PHASE 5: File Upload Handlers
     const handleFileChange = (e) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
-            // Validate size (5MB) on frontend
             if (file.size > 5 * 1024 * 1024) {
                 alert("File is too large. Maximum size is 5MB.");
-                e.target.value = ""; // Reset input
+                e.target.value = ""; 
                 return;
             }
             setSelectedFile(file);
@@ -103,7 +98,7 @@ export default function TicketDetails() {
             
             setSelectedFile(null); 
             document.getElementById('file-upload-input').value = ""; 
-            fetchData(); // Refresh the list
+            fetchData(); 
         } catch (error) {
             alert(error.response?.data?.detail || "Failed to upload file");
         } finally {
@@ -111,11 +106,10 @@ export default function TicketDetails() {
         }
     };
 
-    // PHASE 5: Secure File Download Handler
     const handleDownload = async (attachmentId, fileName) => {
         try {
             const response = await api.get(`/tickets/attachments/${attachmentId}/download`, {
-                responseType: 'blob' // Important for files!
+                responseType: 'blob'
             });
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
@@ -126,6 +120,17 @@ export default function TicketDetails() {
             link.remove();
         } catch (error) {
             alert("Failed to download file.");
+        }
+    };
+
+    // --- PHASE 6: Helper function for SLA UI styling ---
+    const getSlaBadge = (status) => {
+        switch(status) {
+            case 'on_track': return <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center"><CheckCircle className="w-3 h-3 mr-1" /> On Track</span>;
+            case 'at_risk': return <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold flex items-center"><Clock className="w-3 h-3 mr-1" /> At Risk</span>;
+            case 'breached': return <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold flex items-center"><AlertOctagon className="w-3 h-3 mr-1" /> SLA Breached</span>;
+            case 'completed': return <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold flex items-center"><CheckCircle className="w-3 h-3 mr-1" /> SLA Met</span>;
+            default: return null;
         }
     };
 
@@ -148,29 +153,44 @@ export default function TicketDetails() {
                         </span>
                     </div>
                     
-                    <div className="flex flex-wrap gap-4 text-sm text-gray-600">
+                    <div className="flex flex-wrap gap-4 text-sm text-gray-600 items-center">
                         <span className="flex items-center bg-white px-3 py-1 rounded-lg border border-gray-200 shadow-sm">
                             <Tag className="w-4 h-4 mr-2 text-purple-500" /> {ticket.category}
                         </span>
                         <span className="flex items-center bg-white px-3 py-1 rounded-lg border border-gray-200 shadow-sm">
                             <AlertTriangle className="w-4 h-4 mr-2 text-orange-500" /> {ticket.priority} Priority
                         </span>
+                        {/* PHASE 6: Dynamic SLA Badge */}
+                        {getSlaBadge(ticket.sla_status)}
                     </div>
+                </div>
+
+                {/* PHASE 6: SLA Details Bar */}
+                <div className="bg-gray-50 border-b border-gray-100 px-8 py-4 flex flex-wrap justify-between items-center text-sm">
+                    <div className="flex items-center text-gray-700">
+                        <Calendar className="w-4 h-4 mr-2 text-gray-400" />
+                        <strong>Created:</strong> <span className="ml-2">{new Date(ticket.created_at).toLocaleString()}</span>
+                    </div>
+                    {ticket.due_at && (
+                        <div className={`flex items-center ${ticket.sla_status === 'breached' ? 'text-red-600 font-bold' : 'text-gray-700'}`}>
+                            <Clock className="w-4 h-4 mr-2" />
+                            <strong>Resolution Due By:</strong> <span className="ml-2">{new Date(ticket.due_at).toLocaleString()}</span>
+                        </div>
+                    )}
                 </div>
 
                 <div className="p-8">
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Original Description</h3>
-                    <div className="bg-gray-50 p-6 rounded-xl text-gray-700 leading-relaxed whitespace-pre-wrap border border-gray-100">
+                    <div className="bg-white p-6 rounded-xl text-gray-700 leading-relaxed whitespace-pre-wrap border border-gray-100 shadow-inner">
                         {ticket.description}
                     </div>
 
-                    {/* PHASE 5: FILE UPLOADS SECTION */}
+                    {/* FILE UPLOADS SECTION */}
                     <div className="mt-8">
                         <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center">
                             <Paperclip className="w-4 h-4 mr-2" /> Attachments
                         </h3>
                         
-                        {/* Upload Form */}
                         <form onSubmit={handleFileUpload} className="flex flex-col sm:flex-row items-center gap-4 mb-4">
                             <input 
                                 id="file-upload-input"
@@ -188,7 +208,6 @@ export default function TicketDetails() {
                             </button>
                         </form>
 
-                        {/* Attachments List */}
                         {attachments.length === 0 ? (
                             <p className="text-gray-500 text-sm italic">No files attached to this ticket.</p>
                         ) : (
@@ -216,7 +235,7 @@ export default function TicketDetails() {
                         )}
                     </div>
 
-                    {/* PHASE 4: REOPEN TICKET UI */}
+                    {/* REOPEN TICKET UI */}
                     {ticket.status === 'Closed' && currentUser.role === 'user' && currentUser.id === ticket.created_by && (
                         <div className="mt-8 pt-6 border-t border-gray-100">
                             {!isReopening ? (
@@ -239,10 +258,9 @@ export default function TicketDetails() {
                 </div>
             </div>
 
-            {/* Grid Layout for Timeline and Updates */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
-                {/* PHASE 4: AUDIT TRAIL TIMELINE */}
+                {/* AUDIT TRAIL TIMELINE */}
                 <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden">
                     <div className="p-6 border-b border-gray-100 flex items-center space-x-2 text-gray-800 bg-gray-50">
                         <Activity className="w-5 h-5 text-blue-600" />
@@ -261,7 +279,7 @@ export default function TicketDetails() {
                     </div>
                 </div>
 
-                {/* Updates Section */}
+                {/* UPDATES SECTION */}
                 <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden">
                     <div className="p-6 border-b border-gray-100 flex items-center space-x-2 text-gray-800 bg-gray-50">
                         <MessageSquare className="w-5 h-5 text-purple-600" />

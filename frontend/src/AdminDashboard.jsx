@@ -1,29 +1,31 @@
-import Analytics from './Analytics';
+import Analytics from './Analytics'; // Or './components/Analytics' depending on your folder structure
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ShieldAlert, Search, Filter } from 'lucide-react';
+import { ShieldAlert, Search, AlertOctagon, Clock, CheckCircle } from 'lucide-react';
 import api from './api';
 
 export default function AdminDashboard() {
     const [tickets, setTickets] = useState([]);
     const [supportUsers, setSupportUsers] = useState([]);
     
-    // Phase 5: Pagination and Filter States
+    // Pagination and Filter States
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [priorityFilter, setPriorityFilter] = useState('');
 
-    // Fetch data whenever page or dropdown filters change
+    // --- PHASE 6: SLA Summary State ---
+    const [slaSummary, setSlaSummary] = useState({ breached_count: 0, at_risk_count: 0, compliance_percentage: 0 });
+
     useEffect(() => {
         fetchData();
     }, [page, statusFilter, priorityFilter]);
 
     const fetchData = async () => {
         try {
-            // Hit the new Advanced Phase 5 endpoint with query parameters
-            const [ticketsRes, usersRes] = await Promise.all([
+            // PHASE 6: Added the SLA Summary endpoint to our concurrent fetch request!
+            const [ticketsRes, usersRes, slaRes] = await Promise.all([
                 api.get('/admin/tickets/search', {
                     params: {
                         page: page,
@@ -33,22 +35,22 @@ export default function AdminDashboard() {
                         priority: priorityFilter || null
                     }
                 }),
-                api.get('/admin/support-users')
+                api.get('/admin/support-users'),
+                api.get('/admin/sla-summary') // Fetching our new SLA numbers!
             ]);
             
-            // The new endpoint returns { data: [...], meta: {...} }
             setTickets(ticketsRes.data.data);
             setTotalPages(ticketsRes.data.meta.total_pages);
             setSupportUsers(usersRes.data);
+            setSlaSummary(slaRes.data); // Save the SLA data
         } catch (error) {
             console.error("Error fetching admin data:", error);
         }
     };
 
-    // Triggered when user clicks "Search"
     const handleSearchSubmit = (e) => {
         e.preventDefault();
-        setPage(1); // Reset to page 1 on a new search
+        setPage(1); 
         fetchData();
     };
 
@@ -69,7 +71,7 @@ export default function AdminDashboard() {
             }
 
             await api.patch(endpoint, payload);
-            fetchData(); // Refresh the table
+            fetchData(); // Refresh table AND SLA stats automatically!
         } catch (error) {
             alert(`Failed to update ${field}`);
         }
@@ -77,8 +79,43 @@ export default function AdminDashboard() {
 
     return (
         <div className="space-y-8">
-            {/* PHASE 5: Analytics Dashboard Component */}
             <Analytics />
+
+            {/* --- PHASE 6: SLA SUMMARY CARDS --- */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Breached Card */}
+                <div className="bg-red-50 border border-red-100 p-6 rounded-2xl flex items-center justify-between shadow-sm transition hover:shadow-md">
+                    <div>
+                        <p className="text-red-600 text-sm font-bold uppercase tracking-wider">SLA Breached</p>
+                        <h3 className="text-3xl font-extrabold text-red-900 mt-1">{slaSummary.breached_count}</h3>
+                    </div>
+                    <div className="bg-red-200 p-3 rounded-xl">
+                        <AlertOctagon className="w-8 h-8 text-red-600" />
+                    </div>
+                </div>
+
+                {/* At Risk Card */}
+                <div className="bg-orange-50 border border-orange-100 p-6 rounded-2xl flex items-center justify-between shadow-sm transition hover:shadow-md">
+                    <div>
+                        <p className="text-orange-600 text-sm font-bold uppercase tracking-wider">Tickets At Risk</p>
+                        <h3 className="text-3xl font-extrabold text-orange-900 mt-1">{slaSummary.at_risk_count}</h3>
+                    </div>
+                    <div className="bg-orange-200 p-3 rounded-xl">
+                        <Clock className="w-8 h-8 text-orange-600" />
+                    </div>
+                </div>
+
+                {/* Compliance Card */}
+                <div className="bg-green-50 border border-green-100 p-6 rounded-2xl flex items-center justify-between shadow-sm transition hover:shadow-md">
+                    <div>
+                        <p className="text-green-600 text-sm font-bold uppercase tracking-wider">SLA Compliance</p>
+                        <h3 className="text-3xl font-extrabold text-green-900 mt-1">{slaSummary.compliance_percentage}%</h3>
+                    </div>
+                    <div className="bg-green-200 p-3 rounded-xl">
+                        <CheckCircle className="w-8 h-8 text-green-600" />
+                    </div>
+                </div>
+            </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden">
                 <div className="p-6 border-b border-purple-50 bg-gradient-to-r from-purple-800 to-purple-600 flex flex-col md:flex-row justify-between items-start md:items-center text-white gap-4">
@@ -87,7 +124,6 @@ export default function AdminDashboard() {
                         <h2 className="text-2xl font-bold">Admin Command Center</h2>
                     </div>
                     
-                    {/* PHASE 5: Search and Filter Controls */}
                     <form onSubmit={handleSearchSubmit} className="flex flex-wrap gap-3 w-full md:w-auto">
                         <div className="relative flex-grow md:flex-grow-0">
                             <input 
@@ -200,7 +236,6 @@ export default function AdminDashboard() {
                     </table>
                 </div>
 
-                {/* PHASE 5: Pagination Controls */}
                 {totalPages > 1 && (
                     <div className="p-4 border-t border-gray-100 flex justify-between items-center bg-gray-50">
                         <button 

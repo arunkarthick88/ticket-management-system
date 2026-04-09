@@ -43,6 +43,14 @@ class TicketResponse(BaseModel):
     assigned_to: Optional[int]
     created_at: datetime
     updated_at: datetime
+    
+    # --- PHASE 6: NEW SLA ENGINE FIELDS ---
+    due_at: Optional[datetime] = None
+    first_response_at: Optional[datetime] = None
+    resolved_at: Optional[datetime] = None
+    sla_status: Optional[str] = "on_track"
+    breached_at: Optional[datetime] = None
+    
     class Config:
         from_attributes = True
 
@@ -114,3 +122,10 @@ class TicketAttachmentResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+# --- PHASE 6: SLA DASHBOARD SCHEMAS ---
+class SLASummaryResponse(BaseModel):
+    breached_count: int
+    at_risk_count: int
+    compliance_percentage: float

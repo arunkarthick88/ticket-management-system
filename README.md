@@ -91,3 +91,17 @@ Ensures the Admin Dashboard remains highly responsive and memory-efficient regar
 Provides administrators with a high-level, visual overview of system health and raw data access.
 * **Backend Layer (`admin_router.py`):** The `/analytics` endpoint offloads heavy mathematical aggregations to PostgreSQL using `func.count` and `group_by`, returning a lightweight JSON payload. The `/export-csv` endpoint generates a real-time CSV file purely in server memory using Python's `io.StringIO` and streams it back to the client via `StreamingResponse`.
 * **Frontend Layer (`Analytics.jsx`):** Consumes the aggregated JSON data to render interactive, animated `Doughnut` and `Bar` charts using `react-chartjs-2`. Triggers seamless file downloads by creating a temporary DOM blob link to capture the incoming backend CSV stream.
+
+## SLA Engine API Documentation
+
+### New SLA Endpoints
+| Method | Endpoint | Purpose | Access |
+| :--- | :--- | :--- | :--- |
+| **POST** | `/tickets/sla/scan` | Triggers the background scanner to evaluate all open tickets, updating statuses to `at_risk` or `breached` based on current time vs `due_at`. | Admin |
+| **GET** | `/admin/sla-summary` | Returns aggregated metrics (`breached_count`, `at_risk_count`, `compliance_percentage`) for the dashboard. | Admin |
+
+### Updated Existing Endpoints
+* **`POST /tickets/`**: Now automatically computes and injects the `due_at` timestamp based on priority (Low: 72h, Med: 48h, High: 24h, Urgent: 8h).
+* **`PATCH /tickets/{id}/priority`**: Now triggers a recalculation of the `due_at` deadline using the new priority threshold.
+* **`PATCH /tickets/{id}/status`**: If marked 'Resolved' or 'Closed', checks the current time against `due_at` and sets `sla_status` to `completed` if successful.
+* **`POST /tickets/{id}/updates`**: Captures the `first_response_at` timestamp upon the first comment from a support user.
