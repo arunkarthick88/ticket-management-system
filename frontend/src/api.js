@@ -1,6 +1,5 @@
 import axios from 'axios';
 
-// 1. Point to the new API Version 1 prefix!
 const api = axios.create({
     baseURL: 'http://localhost:8000/api/v1' 
 });
@@ -13,17 +12,18 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
-// 2. Automatically unwrap the standard response wrapper!
 api.interceptors.response.use(
     (response) => {
-        // If the backend sends { status: "success", data: [...] }, 
-        // we automatically pull out the inner "data" so React doesn't break!
-        if (response.data && response.data.status === 'success') {
+        // SMART UNWRAP:
+        // Only unwrap if 'status' is success AND the 'data' property actually exists.
+        // This allows flat objects (like our new login response) to pass through safely.
+        if (response.data && response.data.status === 'success' && response.data.data !== undefined) {
             response.data = response.data.data; 
         }
         return response;
     },
     (error) => {
+        // Optional: Global error handling (like redirecting on 401) can go here
         return Promise.reject(error);
     }
 );
