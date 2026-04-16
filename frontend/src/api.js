@@ -1,10 +1,10 @@
 import axios from 'axios';
 
+// 1. Point to the new API Version 1 prefix!
 const api = axios.create({
-    baseURL: 'http://127.0.0.1:8000',
+    baseURL: 'http://localhost:8000/api/v1' 
 });
 
-// Automatically attach the JWT token to every request
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem('token');
     if (token) {
@@ -12,5 +12,20 @@ api.interceptors.request.use((config) => {
     }
     return config;
 });
+
+// 2. Automatically unwrap the standard response wrapper!
+api.interceptors.response.use(
+    (response) => {
+        // If the backend sends { status: "success", data: [...] }, 
+        // we automatically pull out the inner "data" so React doesn't break!
+        if (response.data && response.data.status === 'success') {
+            response.data = response.data.data; 
+        }
+        return response;
+    },
+    (error) => {
+        return Promise.reject(error);
+    }
+);
 
 export default api;

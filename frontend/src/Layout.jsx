@@ -6,19 +6,32 @@ import api from './api';
 export default function Layout() {
     const [user, setUser] = useState(null);
     const [unreadCount, setUnreadCount] = useState(0);
-    const [toastMessage, setToastMessage] = useState(''); // State for real-time popups
+    const [toastMessage, setToastMessage] = useState(''); 
     const navigate = useNavigate();
     const location = useLocation();
-    const ws = useRef(null); // Keeps track of the WebSocket connection
+    const ws = useRef(null); 
+
+    // Helper function to explicitly fetch the latest unread count
+    const fetchUnreadCount = async () => {
+        try {
+            const countRes = await api.get('/notifications/unread-count');
+            // Support both data structures (raw or wrapped in APIResponse)
+            const count = countRes.data?.unread_count !== undefined 
+                ? countRes.data.unread_count 
+                : countRes.data?.data?.unread_count || 0;
+            
+            setUnreadCount(count);
+        } catch (error) {
+            console.error("Failed to fetch unread count", error);
+        }
+    };
 
     useEffect(() => {
         const fetchUserAndNotifications = async () => {
             try {
                 const userRes = await api.get('/auth/me');
-                setUser(userRes.data);
-                
-                const countRes = await api.get('/notifications/unread-count');
-                setUnreadCount(countRes.data.unread_count);
+                setUser(userRes.data?.data || userRes.data); // Support wrapper
+                fetchUnreadCount();
             } catch (error) {
                 localStorage.removeItem('token');
                 navigate('/login');
@@ -29,20 +42,27 @@ export default function Layout() {
 
     // --- PHASE 4: WEBSOCKET CONNECTION ---
     useEffect(() => {
-        if (user) {
+        if (user && user.id) {
             // Connect to the FastAPI WebSocket endpoint
             ws.current = new WebSocket(`ws://localhost:8000/ws/${user.id}`);
             
             // Listen for real-time messages
             ws.current.onmessage = (event) => {
                 const message = event.data;
-                setUnreadCount(prev => prev + 1); // Instantly update the red badge
-                setToastMessage(message); // Show the popup
                 
-                // Hide popup after 5 seconds
-                setTimeout(() => {
-                    setToastMessage('');
-                }, 5000);
+                // If it's just an "update" ping, re-fetch the count
+                if (message === "update") {
+                    fetchUnreadCount();
+                } else {
+                    // Otherwise, it's a specific message to show in the toast
+                    fetchUnreadCount(); // Still update count
+                    setToastMessage(message); 
+                    
+                    // Hide popup after 5 seconds
+                    setTimeout(() => {
+                        setToastMessage('');
+                    }, 5000);
+                }
             };
 
             // Cleanup connection when the user logs out or closes the browser
@@ -69,7 +89,7 @@ export default function Layout() {
                 <div className="fixed bottom-8 right-8 bg-purple-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center space-x-4 z-50 animate-bounce">
                     <Bell className="w-5 h-5 text-purple-300" />
                     <span className="font-bold">{toastMessage}</span>
-                    <button onClick={() => setToastMessage('')} className="text-purple-300 hover:text-white">
+                    <button onClick={() => setToastMessage('')} className="text-purple-300 hover:text-white transition">
                         <X className="w-5 h-5" />
                     </button>
                 </div>

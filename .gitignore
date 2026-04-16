@@ -1,9 +1,18 @@
-# Python
-backend/env/
-backend/__pycache__/
-*.pyc
-
-# React
+# Node / Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# Python / Backend
+backend/env/
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/ticket_db.sqlite3
+backend/.env
+backend/uploads/
+
+# OS Files
 .DS_Store
+Thumbs.db

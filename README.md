@@ -105,3 +105,23 @@ Provides administrators with a high-level, visual overview of system health and 
 * **`PATCH /tickets/{id}/priority`**: Now triggers a recalculation of the `due_at` deadline using the new priority threshold.
 * **`PATCH /tickets/{id}/status`**: If marked 'Resolved' or 'Closed', checks the current time against `due_at` and sets `sla_status` to `completed` if successful.
 * **`POST /tickets/{id}/updates`**: Captures the `first_response_at` timestamp upon the first comment from a support user.
+
+### 7. Advanced Full-Text Search (PostgreSQL FTS)
+Replaces basic string matching with a highly intelligent, natural-language search engine natively within the database.
+* **Database Layer:** Uses PostgreSQL's `tsvector` and `tsquery`. The backend dynamically concatenates the ticket `title` and `description` (using `coalesce` to handle nulls) into a searchable vector document.
+* **Hybrid Matching & Ranking:** The `GET /tickets/search` endpoint utilizes a hybrid approach. It checks for exact word matches using `@@` operator and calculates a relevance score using `ts_rank` to order the best results first. It simultaneously falls back to `ILIKE` partial matching to ensure incomplete words (e.g., "err" for "error") still return valid results.
+
+### 8. Bulk Operations & Soft Deletion (Trash Can)
+Allows administrators to manage massive queues instantly without permanently destroying relational data.
+* **Backend Layer (`admin_router.py`):** Bulk endpoints (`/bulk-status`, `/bulk-assign`, `/bulk-delete`) accept arrays of `ticket_ids`. Instead of looping through IDs (which is slow), it performs a single, high-performance SQLAlchemy bulk update using `synchronize_session=False`.
+* **Soft Delete Architecture:** Tickets are never `DELETE`d from the database. Instead, an `is_deleted` boolean is toggled to `True`. The main active queue globally filters out these records, while a dedicated Trash Can endpoint fetches them, allowing for a 1-click "Restore" functionality.
+
+### 9. In-Memory Caching & Background Invalidation
+Optimizes dashboard load times by preventing heavy, repetitive database aggregations.
+* **Backend Caching:** Heavy endpoints like `/analytics` and `/sla-summary` are wrapped with the `@cache(expire=60)` decorator from `fastapi-cache`. 
+* **Cache Invalidation:** When a ticket is created, updated, or deleted, FastAPI triggers a `BackgroundTask` to instantly clear the cache namespace (`FastAPICache.clear`). This ensures users always see real-time data after making a change, while passive viewers get lightning-fast cached responses.
+
+### 10. Saved Filter States (Custom Views)
+Empowers administrators to save complex search and dropdown criteria into reusable 1-click dashboard views.
+* **Database Layer:** A `SavedFilter` table maps directly to a `user_id` and utilizes a generic `JSON` column to store the exact combination of parameters (Search Term, Priority, Status, Tag) active at the time of saving.
+* **Frontend Layer:** The React UI parses this JSON and dynamically overwrites the local state variables, triggering an instant re-fetch of the customized data grid.
