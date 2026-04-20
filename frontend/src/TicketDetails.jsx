@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Calendar, Tag, AlertTriangle, MessageSquare, Send, Activity, RefreshCw, Paperclip, Download, Clock, AlertOctagon, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Calendar, Tag, AlertTriangle, MessageSquare, Send, Activity, RefreshCw, Paperclip, Download, Clock, AlertOctagon, CheckCircle, GitCommit } from 'lucide-react';
 import api from './api';
 
 export default function TicketDetails() {
@@ -12,6 +12,9 @@ export default function TicketDetails() {
     const [newUpdate, setNewUpdate] = useState('');
     const [currentUser, setCurrentUser] = useState(null);
     
+    // --- PHASE 5: Workflow Engine States ---
+    const [allowedStatuses, setAllowedStatuses] = useState([]);
+    const [statusHistory, setStatusHistory] = useState([]);
     const [isReopening, setIsReopening] = useState(false);
     const [reopenReason, setReopenReason] = useState('');
 
@@ -29,6 +32,15 @@ export default function TicketDetails() {
             const ticketRes = await api.get(`/tickets/${id}`);
             setTicket(ticketRes.data);
             
+            // --- PHASE 5: Fetch Workflow Data ---
+            try {
+                const allowedRes = await api.get(`/tickets/${id}/allowed-statuses`);
+                setAllowedStatuses(allowedRes.data?.allowed_next_statuses || []);
+                
+                const historyRes = await api.get(`/tickets/${id}/status-history`);
+                setStatusHistory(historyRes.data || []);
+            } catch (err) { console.log("Workflow access restricted"); }
+
             try {
                 const updatesRes = await api.get(`/tickets/${id}/updates`);
                 setUpdates(updatesRes.data);
@@ -59,15 +71,31 @@ export default function TicketDetails() {
         } catch (error) { alert("Failed to add update."); }
     };
 
+    // --- PHASE 5: Handle Strict Reopen ---
     const handleReopen = async (e) => {
         e.preventDefault();
+        if (!reopenReason.trim()) return alert("Reason is required!");
         try {
-            await api.post(`/tickets/${id}/reopen`, { reason: reopenReason });
+            await api.patch(`/tickets/${id}/reopen`, { reason: reopenReason });
             setIsReopening(false);
             setReopenReason('');
             fetchData(); 
         } catch (error) {
             alert(error.response?.data?.detail || "Failed to reopen ticket.");
+        }
+    };
+
+    // --- PHASE 5: Handle Standard Workflow Transitions ---
+    const handleWorkflowChange = async (newStatus) => {
+        if (newStatus === 'Reopened') {
+            setIsReopening(true);
+            return;
+        }
+        try {
+            await api.patch(`/tickets/${id}/status`, { status: newStatus, reason: "Updated via UI" });
+            fetchData();
+        } catch (error) { 
+            alert(error.response?.data?.detail || "Failed to change status."); 
         }
     };
 
@@ -123,7 +151,6 @@ export default function TicketDetails() {
         }
     };
 
-    // --- PHASE 6: Helper function for SLA UI styling ---
     const getSlaBadge = (status) => {
         switch(status) {
             case 'on_track': return <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center"><CheckCircle className="w-3 h-3 mr-1" /> On Track</span>;
@@ -160,12 +187,29 @@ export default function TicketDetails() {
                         <span className="flex items-center bg-white px-3 py-1 rounded-lg border border-gray-200 shadow-sm">
                             <AlertTriangle className="w-4 h-4 mr-2 text-orange-500" /> {ticket.priority} Priority
                         </span>
-                        {/* PHASE 6: Dynamic SLA Badge */}
                         {getSlaBadge(ticket.sla_status)}
                     </div>
+
+                    {/* PHASE 5: WORKFLOW ACTION BUTTONS */}
+                    {allowedStatuses.length > 0 && !isReopening && (
+                        <div className="mt-6 pt-6 border-t border-purple-100/50">
+                            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Available Workflow Actions</h3>
+                            <div className="flex flex-wrap gap-2">
+                                {allowedStatuses.map(status => (
+                                    <button
+                                        key={status}
+                                        onClick={() => handleWorkflowChange(status)}
+                                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition flex items-center"
+                                    >
+                                        {status === 'Reopened' ? <RefreshCw className="w-4 h-4 mr-2" /> : <GitCommit className="w-4 h-4 mr-2" />}
+                                        Mark as {status}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* PHASE 6: SLA Details Bar */}
                 <div className="bg-gray-50 border-b border-gray-100 px-8 py-4 flex flex-wrap justify-between items-center text-sm">
                     <div className="flex items-center text-gray-700">
                         <Calendar className="w-4 h-4 mr-2 text-gray-400" />
@@ -235,24 +279,20 @@ export default function TicketDetails() {
                         )}
                     </div>
 
-                    {/* REOPEN TICKET UI */}
-                    {ticket.status === 'Closed' && currentUser.role === 'user' && currentUser.id === ticket.created_by && (
+                    {/* PHASE 5: REOPEN TICKET UI */}
+                    {isReopening && (
                         <div className="mt-8 pt-6 border-t border-gray-100">
-                            {!isReopening ? (
-                                <button onClick={() => setIsReopening(true)} className="flex items-center space-x-2 bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-xl font-bold transition">
-                                    <RefreshCw className="w-5 h-5" />
-                                    <span>Reopen this Ticket</span>
-                                </button>
-                            ) : (
-                                <form onSubmit={handleReopen} className="bg-gray-50 p-6 rounded-xl border border-gray-200">
-                                    <label className="block text-sm font-bold text-gray-700 mb-2">Why are you reopening this ticket?</label>
-                                    <textarea required value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} rows="2" className="w-full p-3 border border-gray-300 rounded-lg focus:ring-4 outline-none mb-3" placeholder="State your reason..."></textarea>
-                                    <div className="flex space-x-3">
-                                        <button type="submit" className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold">Submit</button>
-                                        <button type="button" onClick={() => setIsReopening(false)} className="text-gray-500 hover:text-gray-700 font-bold px-4 py-2">Cancel</button>
-                                    </div>
-                                </form>
-                            )}
+                            <form onSubmit={handleReopen} className="bg-orange-50 p-6 rounded-xl border border-orange-200">
+                                <div className="flex items-center text-orange-800 mb-3">
+                                    <AlertTriangle className="w-5 h-5 mr-2" />
+                                    <label className="block text-sm font-bold">Why are you reopening this ticket?</label>
+                                </div>
+                                <textarea required value={reopenReason} onChange={(e) => setReopenReason(e.target.value)} rows="2" className="w-full p-3 border border-orange-300 rounded-lg focus:ring-4 focus:ring-orange-100 outline-none mb-3" placeholder="State your reason clearly..."></textarea>
+                                <div className="flex space-x-3">
+                                    <button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-bold">Submit Reason & Reopen</button>
+                                    <button type="button" onClick={() => setIsReopening(false)} className="text-gray-600 hover:text-gray-800 font-bold px-4 py-2">Cancel</button>
+                                </div>
+                            </form>
                         </div>
                     )}
                 </div>
@@ -260,47 +300,58 @@ export default function TicketDetails() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
-                {/* AUDIT TRAIL TIMELINE */}
-                <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden">
-                    <div className="p-6 border-b border-gray-100 flex items-center space-x-2 text-gray-800 bg-gray-50">
+                {/* PHASE 5: WORKFLOW STATUS HISTORY */}
+                <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden flex flex-col h-[500px]">
+                    <div className="p-6 border-b border-gray-100 flex items-center space-x-2 text-gray-800 bg-gray-50 shrink-0">
                         <Activity className="w-5 h-5 text-blue-600" />
-                        <h2 className="text-lg font-bold">Activity Timeline</h2>
+                        <h2 className="text-lg font-bold">Status History</h2>
                     </div>
-                    <div className="p-6 max-h-[500px] overflow-y-auto">
-                        <div className="relative border-l-2 border-gray-200 ml-3 space-y-6">
-                            {activities.map(act => (
-                                <div key={act.id} className="relative pl-6">
-                                    <span className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-blue-100 border-2 border-blue-500"></span>
-                                    <p className="text-sm font-bold text-gray-800">{act.action}</p>
-                                    <span className="text-xs text-gray-400">{new Date(act.created_at).toLocaleString()}</span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* UPDATES SECTION */}
-                <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden">
-                    <div className="p-6 border-b border-gray-100 flex items-center space-x-2 text-gray-800 bg-gray-50">
-                        <MessageSquare className="w-5 h-5 text-purple-600" />
-                        <h2 className="text-lg font-bold">Staff Updates</h2>
-                    </div>
-                    <div className="p-6 space-y-6 max-h-[500px] overflow-y-auto">
-                        {updates.length === 0 ? (
-                            <p className="text-gray-500 text-center text-sm">No updates posted yet.</p>
+                    <div className="p-6 overflow-y-auto flex-1">
+                        {statusHistory.length === 0 ? (
+                            <p className="text-gray-500 text-sm text-center mt-10">No status changes recorded.</p>
                         ) : (
-                            <div className="space-y-4">
-                                {updates.map(update => (
-                                    <div key={update.id} className="bg-purple-50/50 border border-purple-100 p-4 rounded-xl">
-                                        <span className="text-xs text-gray-500 block mb-1">{new Date(update.created_at).toLocaleString()}</span>
-                                        <p className="text-gray-700 text-sm whitespace-pre-wrap">{update.message}</p>
+                            <div className="relative border-l-2 border-gray-200 ml-3 space-y-6">
+                                {statusHistory.map(hist => (
+                                    <div key={hist.id} className="relative pl-6">
+                                        <span className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full border-2 ${hist.new_status === 'Closed' ? 'bg-gray-100 border-gray-500' : 'bg-blue-100 border-blue-500'}`}></span>
+                                        <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                                            <p className="text-sm font-bold text-gray-800">
+                                                Changed to <span className="text-blue-600">{hist.new_status}</span>
+                                            </p>
+                                            {hist.reason && <p className="text-sm text-gray-600 italic mt-1 bg-white p-2 border border-gray-100 rounded">"{hist.reason}"</p>}
+                                            <span className="text-xs text-gray-400 mt-2 block">{new Date(hist.created_at).toLocaleString()}</span>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
                         )}
+                    </div>
+                </div>
+
+                {/* UPDATES SECTION */}
+                <div className="bg-white rounded-2xl shadow-sm border border-purple-100 overflow-hidden flex flex-col h-[500px]">
+                    <div className="p-6 border-b border-gray-100 flex items-center space-x-2 text-gray-800 bg-gray-50 shrink-0">
+                        <MessageSquare className="w-5 h-5 text-purple-600" />
+                        <h2 className="text-lg font-bold">Staff Updates</h2>
+                    </div>
+                    <div className="p-6 overflow-y-auto flex-1 flex flex-col justify-between">
+                        <div>
+                            {updates.length === 0 ? (
+                                <p className="text-gray-500 text-center text-sm mt-10">No updates posted yet.</p>
+                            ) : (
+                                <div className="space-y-4 mb-4">
+                                    {updates.map(update => (
+                                        <div key={update.id} className="bg-purple-50/50 border border-purple-100 p-4 rounded-xl">
+                                            <span className="text-xs text-gray-500 block mb-1">{new Date(update.created_at).toLocaleString()}</span>
+                                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{update.message}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
 
                         {(currentUser.role === 'admin' || currentUser.role === 'support') && ticket.status !== 'Closed' && (
-                            <form onSubmit={handleAddUpdate} className="mt-4 pt-4 border-t border-gray-100">
+                            <form onSubmit={handleAddUpdate} className="mt-auto pt-4 border-t border-gray-100 shrink-0">
                                 <textarea required value={newUpdate} onChange={(e) => setNewUpdate(e.target.value)} rows="2" className="w-full p-3 border border-gray-300 rounded-lg outline-none mb-3 text-sm" placeholder="Add troubleshooting note..."></textarea>
                                 <button type="submit" className="w-full bg-purple-600 text-white font-bold py-2 rounded-lg hover:bg-purple-700 transition flex justify-center items-center space-x-2 text-sm">
                                     <Send className="w-4 h-4" />

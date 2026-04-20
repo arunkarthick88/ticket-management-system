@@ -78,8 +78,14 @@ class TicketResponse(BaseModel):
 
     # PHASE 2 FIELDS
     is_deleted: bool = False
-    tags: List[TagResponse] = [] # New: Automatically bundle tags with the ticket
+    tags: List[TagResponse] = [] 
     
+    # PHASE 5: WORKFLOW ENGINE FIELDS
+    closed_at: Optional[datetime] = None
+    reopened_at: Optional[datetime] = None
+    reopen_reason: Optional[str] = None
+    last_status_changed_at: Optional[datetime] = None
+
     class Config:
         from_attributes = True
 
@@ -167,3 +173,29 @@ class APIResponse(BaseModel):
     status: str
     message: str
     data: Optional[Any] = None
+
+# ==========================================
+# --- PHASE 5: WORKFLOW ENGINE SCHEMAS ---
+# ==========================================
+
+class StatusUpdateWithReason(BaseModel):
+    status: str
+    reason: Optional[str] = None
+
+class ReopenTicketData(BaseModel):
+    reason: str # Mandatory for reopening
+
+class StatusHistoryResponse(BaseModel):
+    id: int
+    old_status: str
+    new_status: str
+    changed_by: int
+    reason: Optional[str] = None
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class AllowedStatusesResponse(BaseModel):
+    current_status: str
+    allowed_next_statuses: List[str]

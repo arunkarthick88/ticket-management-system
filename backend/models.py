@@ -54,6 +54,12 @@ class Ticket(Base):
     is_deleted = Column(Boolean, default=False, index=True)
     deleted_at = Column(DateTime, nullable=True)
 
+    # --- PHASE 5: WORKFLOW ENGINE FIELDS ---
+    closed_at = Column(DateTime, nullable=True)
+    reopened_at = Column(DateTime, nullable=True)
+    reopen_reason = Column(Text, nullable=True)
+    last_status_changed_at = Column(DateTime, default=datetime.utcnow)
+
     creator = relationship("User", foreign_keys=[created_by], back_populates="tickets_created")
     
     # --- PHASE 2: TAGS RELATIONSHIP ---
@@ -138,3 +144,19 @@ class SavedFilter(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="saved_filters")
+
+
+# --- PHASE 5: WORKFLOW STATUS HISTORY MODEL ---
+class TicketStatusHistory(Base):
+    __tablename__ = "ticket_status_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="CASCADE"), index=True)
+    old_status = Column(String(50))
+    new_status = Column(String(50))
+    changed_by = Column(Integer, ForeignKey("users.id"))
+    reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    ticket = relationship("Ticket")
+    user = relationship("User", foreign_keys=[changed_by])

@@ -4,6 +4,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 import os
 import shutil
+from datetime import datetime
 import models, schemas, auth
 from database import get_db
 
@@ -21,11 +22,31 @@ async def clear_dashboard_cache():
 class AssignData(BaseModel):
     assigned_to: int
 
-class StatusData(BaseModel):
-    status: str
-
 class PriorityData(BaseModel):
     priority: str
+
+# --- PHASE 5: WORKFLOW ENGINE STATE MACHINE ---
+ALLOWED_TRANSITIONS = {
+    "Open": ["In Progress"],
+    "In Progress": ["Resolved"],
+    "Resolved": ["Closed", "Reopened"],
+    "Closed": ["Reopened"],
+    "Reopened": ["In Progress"]
+}
+
+def can_user_change_status(user_role: str, new_status: str) -> bool:
+    """Checks if a specific role is allowed to transition to the new status."""
+    if user_role == "admin": 
+        return True
+    if user_role == "support" and new_status in ["In Progress", "Resolved", "Reopened", "Closed"]: 
+        return True
+    if user_role == "user" and new_status == "Reopened": 
+        return True
+    return False
+
+# ========================================
+# TICKETS CRUD
+# ========================================
 
 @router.post("/tickets", response_model=schemas.APIResponse)
 async def create_ticket(
@@ -68,7 +89,9 @@ def soft_delete_ticket(ticket_id: int, background_tasks: BackgroundTasks, db: Se
     except HTTPException as e:
         raise e
 
-# --- PHASE 3 ROUTES: PATCH UPDATES & NOTIFICATIONS ---
+# ========================================
+# PHASE 3 & 5: ASSIGNMENTS, STATUS, & WORKFLOW
+# ========================================
 
 @router.patch("/tickets/{ticket_id}/assign", response_model=schemas.APIResponse)
 async def assign_ticket(ticket_id: int, payload: AssignData, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -77,7 +100,6 @@ async def assign_ticket(ticket_id: int, payload: AssignData, background_tasks: B
     
     ticket.assigned_to = payload.assigned_to
     
-    # FIXED: Added ticket_id=ticket.id
     if payload.assigned_to:
         notif = models.Notification(user_id=payload.assigned_to, ticket_id=ticket.id, message=f"You were assigned to Ticket #{ticket.id}", is_read=False)
         db.add(notif)
@@ -93,24 +115,103 @@ async def assign_ticket(ticket_id: int, payload: AssignData, background_tasks: B
         
     return success_response(message="Ticket assigned successfully")
 
-@router.patch("/tickets/{ticket_id}/status", response_model=schemas.APIResponse)
-async def update_status(ticket_id: int, payload: StatusData, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+
+# --- NEW: Get Allowed Statuses for UI ---
+@router.get("/tickets/{ticket_id}/allowed-statuses", response_model=schemas.APIResponse)
+def get_allowed_statuses(ticket_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
     ticket = db.query(models.Ticket).filter(models.Ticket.id == ticket_id).first()
     if not ticket: raise HTTPException(404, "Ticket not found")
     
-    ticket.status = payload.status
+    valid_transitions = ALLOWED_TRANSITIONS.get(ticket.status, [])
+    allowed = [s for s in valid_transitions if can_user_change_status(current_user.role, s)]
     
+    return success_response(data={"current_status": ticket.status, "allowed_next_statuses": allowed})
+
+
+# --- NEW: Get Status History ---
+@router.get("/tickets/{ticket_id}/status-history", response_model=schemas.APIResponse)
+def get_status_history(ticket_id: int, db: Session = Depends(get_db)):
+    history = db.query(models.TicketStatusHistory).filter(models.TicketStatusHistory.ticket_id == ticket_id).order_by(models.TicketStatusHistory.created_at.desc()).all()
+    data = [schemas.StatusHistoryResponse.from_orm(h) for h in history]
+    return success_response(data=data, message="History retrieved")
+
+
+# --- UPDATED: Advanced Workflow Status Update ---
+@router.patch("/tickets/{ticket_id}/status", response_model=schemas.APIResponse)
+async def update_status(ticket_id: int, payload: schemas.StatusUpdateWithReason, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ticket = db.query(models.Ticket).filter(models.Ticket.id == ticket_id).first()
+    if not ticket: raise HTTPException(404, "Ticket not found")
+    
+    old_status = ticket.status
+    new_status = payload.status
+
+    # Validate transition
+    if new_status not in ALLOWED_TRANSITIONS.get(old_status, []) and current_user.role != "admin":
+        raise HTTPException(400, f"Invalid transition from {old_status} to {new_status}")
+    if not can_user_change_status(current_user.role, new_status):
+        raise HTTPException(403, "Role not authorized for this transition")
+
+    # Update Ticket
+    ticket.status = new_status
+    ticket.last_status_changed_at = datetime.utcnow()
+    if new_status == "Resolved": ticket.resolved_at = datetime.utcnow()
+    if new_status == "Closed": ticket.closed_at = datetime.utcnow()
+
+    # Log History
+    history = models.TicketStatusHistory(
+        ticket_id=ticket.id, old_status=old_status, new_status=new_status,
+        changed_by=current_user.id, reason=payload.reason
+    )
+    db.add(history)
+
+    # Notifications
     if ticket.created_by != current_user.id:
-        # FIXED: Added ticket_id=ticket.id
         notif = models.Notification(user_id=ticket.created_by, ticket_id=ticket.id, message=f"Ticket #{ticket.id} status changed to {payload.status}", is_read=False)
         db.add(notif)
-        db.commit()
+        
+    db.commit()
+
+    if ticket.created_by != current_user.id:
         await manager.send_personal_message("update", ticket.created_by)
-    else:
-        db.commit()
         
     background_tasks.add_task(clear_dashboard_cache)
-    return success_response(message="Status updated")
+    return success_response(message="Status updated via workflow")
+
+
+# --- NEW: Strict Reopen Endpoint ---
+@router.patch("/tickets/{ticket_id}/reopen", response_model=schemas.APIResponse)
+async def reopen_ticket(ticket_id: int, payload: schemas.ReopenTicketData, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
+    ticket = db.query(models.Ticket).filter(models.Ticket.id == ticket_id).first()
+    if not ticket: raise HTTPException(404, "Ticket not found")
+
+    if ticket.status not in ["Resolved", "Closed"]:
+        raise HTTPException(400, "Only Resolved or Closed tickets can be reopened")
+
+    old_status = ticket.status
+    ticket.status = "Reopened"
+    ticket.reopened_at = datetime.utcnow()
+    ticket.reopen_reason = payload.reason
+    ticket.last_status_changed_at = datetime.utcnow()
+
+    history = models.TicketStatusHistory(
+        ticket_id=ticket.id, old_status=old_status, new_status="Reopened",
+        changed_by=current_user.id, reason=payload.reason
+    )
+    db.add(history)
+
+    # Alert the assigned agent if a user reopens it
+    if ticket.assigned_to and current_user.role == "user":
+        notif = models.Notification(user_id=ticket.assigned_to, ticket_id=ticket.id, message=f"Ticket #{ticket.id} was reopened by the user.", is_read=False)
+        db.add(notif)
+
+    db.commit()
+
+    if ticket.assigned_to and current_user.role == "user":
+        await manager.send_personal_message("update", ticket.assigned_to)
+
+    background_tasks.add_task(clear_dashboard_cache)
+    return success_response(message="Ticket successfully reopened")
+
 
 @router.patch("/tickets/{ticket_id}/priority", response_model=schemas.APIResponse)
 async def update_priority(ticket_id: int, payload: PriorityData, background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -120,7 +221,6 @@ async def update_priority(ticket_id: int, payload: PriorityData, background_task
     ticket.priority = payload.priority
     
     if ticket.created_by != current_user.id:
-        # FIXED: Added ticket_id=ticket.id
         notif = models.Notification(user_id=ticket.created_by, ticket_id=ticket.id, message=f"Ticket #{ticket.id} priority upgraded to {payload.priority}", is_read=False)
         db.add(notif)
         db.commit()
@@ -131,6 +231,9 @@ async def update_priority(ticket_id: int, payload: PriorityData, background_task
     background_tasks.add_task(clear_dashboard_cache)
     return success_response(message="Priority updated")
 
+# ========================================
+# ATTACHMENTS, ACTIVITY & TAGS
+# ========================================
 
 @router.post("/tickets/{ticket_id}/attachments", response_model=schemas.APIResponse)
 async def upload_attachment(ticket_id: int, file: UploadFile = File(...), db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
@@ -143,7 +246,7 @@ async def upload_attachment(ticket_id: int, file: UploadFile = File(...), db: Se
         shutil.copyfileobj(file.file, buffer)
 
     try:
-        new_attachment = models.TicketAttachment(ticket_id=ticket_id, user_id=current_user.id, file_name=file.filename, file_path=file_path)
+        new_attachment = models.TicketAttachment(ticket_id=ticket_id, uploader_id=current_user.id, file_name=file.filename, file_path=file_path)
         db.add(new_attachment)
         db.commit()
     except Exception as e:

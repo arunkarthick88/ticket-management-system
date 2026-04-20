@@ -125,3 +125,9 @@ Optimizes dashboard load times by preventing heavy, repetitive database aggregat
 Empowers administrators to save complex search and dropdown criteria into reusable 1-click dashboard views.
 * **Database Layer:** A `SavedFilter` table maps directly to a `user_id` and utilizes a generic `JSON` column to store the exact combination of parameters (Search Term, Priority, Status, Tag) active at the time of saving.
 * **Frontend Layer:** The React UI parses this JSON and dynamically overwrites the local state variables, triggering an instant re-fetch of the customized data grid.
+
+### 11. Enterprise Workflow Engine & State Machine
+Enforces a strictly controlled ticket lifecycle, preventing invalid state jumps, chaos, and ensuring complete auditability for support operations.
+* **Database Layer (`models.py`):** Introduces a dedicated `TicketStatusHistory` table to create an immutable audit log of every status change (capturing the old status, new status, the specific user who changed it, and mandatory reasons). Additional timestamp columns (`resolved_at`, `closed_at`, `reopened_at`) track exact SLA milestones.
+* **Backend Layer (`ticket_router.py`):** Replaces basic text updates with a rigorous Python State Machine (`ALLOWED_TRANSITIONS`). The API mathematically validates every transition request against the ticket's current state and the user's explicit RBAC permissions, outright rejecting invalid jumps (e.g., Open → Closed) with a 400 Bad Request. A dedicated strict `/reopen` endpoint mandates a textual reason for compliance.
+* **Frontend Layer (`TicketDetails.jsx`):** The React UI is now completely "Workflow Aware." By actively querying the new `/allowed-statuses` endpoint, it strips away static dropdown menus and dynamically renders only the specific action buttons the user is authorized to click at that exact moment in the ticket's lifecycle. It also features a dedicated chronological timeline rendering the full status history.
